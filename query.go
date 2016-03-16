@@ -72,7 +72,8 @@ func (r *Result) String() string {
 type statCollector struct {
 	wg           *sync.WaitGroup
 	downCounter  *DownCounter
-	timeCh       chan time.Duration
+	start, end   time.Time
+	tmLock       *sync.Mutex
 	HttpStatusCh chan int
 	UsedTime     time.Duration
 	ErrCh        chan error
@@ -81,8 +82,10 @@ type statCollector struct {
 func newCollector(cli, queryCount int) *statCollector {
 	c := &statCollector{
 		wg:           &sync.WaitGroup{},
+		start:        time.Now().Add(time.Hour),      // init start time after now
+		end:          time.Now().Add(-1 * time.Hour), // init end time before now
 		downCounter:  NewDownCounter(queryCount, cli),
-		timeCh:       make(chan time.Duration, cli),
+		tmLock:       &sync.Mutex{},
 		HttpStatusCh: make(chan int, queryCount),
 		ErrCh:        make(chan error, cli),
 	}
@@ -103,8 +106,26 @@ func (c *statCollector) collectStatus(code int) {
 	c.downCounter.Payback()
 }
 
-func (c *statCollector) accuTime(t time.Duration) {
-	c.UsedTime += t
+func (c *statCollector) recordStart() {
+	c.tmLock.Lock()
+	defer c.tmLock.Unlock()
+	t := time.Now()
+	if t.Before(c.start) {
+		c.start = t
+	}
+}
+
+func (c *statCollector) recordEnd() {
+	c.tmLock.Lock()
+	defer c.tmLock.Unlock()
+	t := time.Now()
+	if t.After(c.end) {
+		c.end = t
+	}
+}
+
+func (c *statCollector) calcTime() {
+	c.UsedTime = c.end.Sub(c.start)
 }
 
 func (c *statCollector) close() {
@@ -171,17 +192,16 @@ func runClient(conf *QueryConfig, collector *statCollector, wg *sync.WaitGroup) 
 	sched := make(chan struct{})
 	wg.Add(1)
 	go func() {
-		var start time.Time
 		defer func() {
+			collector.recordEnd()
 			if e, ok := recover().(error); ok {
 				fmt.Fprintf(os.Stderr, "[error]:%s", e.Error())
 				collector.collectError(e)
 			}
-			collector.accuTime(time.Since(start))
 			wg.Done()
 		}()
 		close(sched)
-		start = time.Now()
+		collector.recordStart()
 		for collector.next() {
 			resp, err := cli.Do(req)
 			must(err)
@@ -205,6 +225,7 @@ func runQuery(conf *QueryConfig) *Result {
 		runClient(conf, collector, wg)
 	}
 	wg.Wait()
+	collector.calcTime()
 
 	stats := collector.collect()
 	collector.close()
