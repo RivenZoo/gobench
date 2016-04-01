@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -187,6 +188,16 @@ func runClient(conf *QueryConfig, collector *statCollector, wg *sync.WaitGroup) 
 
 	cli := &http.Client{
 		Timeout: time.Second * 10,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			Dial: (&net.Dialer{
+				Timeout:   60 * time.Second,
+				KeepAlive: 60 * time.Second,
+			}).Dial,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			MaxIdleConnsPerHost:   50000,
+		},
 	}
 
 	sched := make(chan struct{})

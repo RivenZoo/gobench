@@ -46,3 +46,14 @@
     Mode Command
     $ ./build/gobench -mode=cmd -addrs="127.0.0.1:9012" -cmd=exit # send exit command to agent
     $ ./build/gobench -mode=cmd -addrs="10.10.60.10:9012;10.10.60.11:9012" -cmd=query -url="http://github.com" -d='CAACBA==' -en=base64 -cli=10 -N=100 # send query to 2 agent and every agent run 10 client and every agent post 100 request
+
+##### Notice
+    Compared with wrk(https://github.com/wg/wrk). Use both to test same service.
+      1. time ./build/gobench -cli=100 -url='http://127.0.0.1:8080' -N=100000
+      - 27642.541 times/second
+      - 5.42s user 1.72s system 196% cpu 3.637 total
+      2. time wrk -t10 -c100 -d6s http://127.0.0.1:8080
+      - Requests/sec:  51109.01
+      - 0.88s user 4.45s system 88% cpu 6.032 total
+    Result:
+      wrk is more efficient!
